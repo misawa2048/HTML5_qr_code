@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>[HTML5] QRCode Reader</title>
+  <style>
+    /* 全体のレイアウト調整 */
+    #contents { display:flex; width:90%;}
+    #camera, #picture, #qrimage, #reset{ justify-content:center; margin:5px;}
+    #result { position:relative; top: -450px; left:30px; background:rgba(255,255,255,0.5); tra} 
+    /* リーダー部分 */
+    #picture { display:none; }
+    #result { font-size: 14px; border: 1px solid gray; width:580px; height:90px; padding:0px;}
+    #qrimage { border: 1px solid gray; width:200px; height:200px; padding:10px;}
+    small { font-size: 14px; color:gray; }
+  </style>
+</head>
+<body>
+
+<h1>QRCode Reader</h1>
+
+<section id="contents">
+  <!-- カメラ映像 -->
+  <video id="camera" width="640" height="480" muted></video>
+
+  <!-- 処理用 -->
+  <canvas id="picture" width="640" height="480"></canvas>
+
+  </section>
+
+  <!-- 読み取り結果 -->
+  <div id="result">
+    <small>読み取り結果</small>
+  </div>
+  
+    <!-- QRCODE -->
+  <div id="qrimage">
+    <small>QR Code</small>
+    <canvas id="qrout" width="200" height="200"></canvas>
+  </div>
+  <button id="reset" onclick="onResetButton()">リセット</button>
+
+<script src="node_modules/jsqr/dist/jsQR.js"></script>
+<script src="node_modules/qrcode/build/qrcode.js"></script>
+<script>
+const video  = $("#camera");     // === document.querySelector("#camera");
+const canvas = $("#picture");    // === document.querySelector("#picture");
+const ctx = canvas.getContext("2d");
+const resetBtn = $("#reset");
+const qrcanvas = $("#qrout");    // === document.querySelector("#qrout");
+const qrctx = qrcanvas.getContext("2d");
+
+window.onload = () => {
+/*test*/
+const tmpBinArr = [
+  122, 208, 103, 33, 200, 97, 38, 110, 53, 38, 198, 24, 199, 151, 150, 191,
+  36, 167, 188, 119, 124, 234, 93, 35, 224, 119, 191, 57, 152, 95, 129, 140,
+  29, 246,
+];
+let bindata = new Uint8ClampedArray(tmpBinArr);
+for(var i=0;i<tmpBinArr.length;++i){
+  console.log("["+i+"]="+bindata[i]);
+}
+
+/*
+QRCode.toCanvas(
+  document.getElementById('qrout'),
+  [{ data: bindata, mode: 'byte' } ],
+  { errorCorrectionLevel: 'Q' },
+  function (error) { if (error){console.error(error)} console.log('success!'); }
+)
+*/
+
+resetBtn.disabled = true;
+
+  /** カメラ設定 */
+  const constraints = {
+    audio: false,
+    video: {width: 640,height: 480,facingMode: "user"}   // フロントカメラを利用する
+  };
+
+  /**
+   * カメラを<video>と同期
+   */
+   navigator.mediaDevices.getUserMedia(constraints)
+  .then( (stream) => {
+    video.srcObject = stream;
+    video.onloadedmetadata = (e) => {
+      video.play();
+      console.log("sync");
+
+      // QRコードのチェック開始
+      checkPicture();
+    };
+  })
+  .catch( (err) => {
+    console.log(err.name + ": " + err.message);
+  });
+};
+
+/**
+ * QRコードの読み取り
+ */
+function checkPicture(){
+  // カメラの映像をCanvasに複写
+  video.pause();
+  console.log("check");
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // QRコードの読み取り
+  const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+  //----------------------
+  // 存在する場合
+  //----------------------
+  if( code ){
+    // 結果を表示
+    setQRResult("#result", binArrToHexStr(code.binaryData));  // 文字列
+
+    drawLine(ctx, code.location);       // 見つかった箇所に線を引く
+
+    // video と canvas を入れ替え
+    canvas.style.display = 'block';
+    video.style.display = 'none';
+    //video.pause();
+    resetBtn.disabled = false;
+
+    QRCode.toCanvas(
+  document.getElementById('qrout'),
+  [{ data: code.binaryData, mode: 'byte' } ],
+  { errorCorrectionLevel: 'H' },
+  function (error) { if (error){console.error(error)} console.log('success!'); }
+)
+
+  }
+  //----------------------
+  // 存在しない場合
+  //----------------------
+  else{
+    video.play();
+    // 0.3秒後にもう一度チェックする
+    setTimeout( () => {
+      checkPicture();
+    }, 300);
+  }
+}
+
+function retry(){
+  video.play();
+    // 0.3秒後にもう一度チェックする
+    setTimeout( () => {
+      checkPicture();
+    }, 300);
+}
+
+function onResetButton(){
+  console.log("onResetButton");
+  $("#result").innerHTML = "";
+  qrctx.clearRect(0,0,qrctx.canvas.width,qrctx.canvas.height);
+  resetBtn.disabled=true;
+ 
+    canvas.style.display = 'none';
+    video.style.display = 'block';
+    retry();
+}
+
+function binArrToHexStr(_binArr){
+  var str ="";
+  var cnt=0;
+  for(var i=0;i<_binArr.length;++i){
+    var tmpd = ("000"+_binArr[i].toString(10)).slice(-3);
+    str += tmpd;
+    cnt++;
+    if(cnt>=16){
+      cnt=0;
+      str+="<br/>";
+    }else{
+      str += " ";
+    }
+  }
+  return str;
+}
+
+
+/**
+ * 発見されたQRコードに線を引く
+ *
+ * @param {Object} ctx
+ * @param {Object} pos
+ * @param {Object} options
+ * @return {void}
+ */
+function drawLine(ctx, pos, options={color:"blue", size:5}){
+  // 線のスタイル設定
+  ctx.strokeStyle = options.color;
+  ctx.lineWidth   = options.size;
+
+  // 線を描く
+  ctx.beginPath();
+  ctx.moveTo(pos.topLeftCorner.x, pos.topLeftCorner.y);         // 左上からスタート
+  ctx.lineTo(pos.topRightCorner.x, pos.topRightCorner.y);       // 右上
+  ctx.lineTo(pos.bottomRightCorner.x, pos.bottomRightCorner.y); // 右下
+  ctx.lineTo(pos.bottomLeftCorner.x, pos.bottomLeftCorner.y);   // 左下
+  ctx.lineTo(pos.topLeftCorner.x, pos.topLeftCorner.y);         // 左上に戻る
+  ctx.stroke();
+}
+
+/**
+ * QRコードの読み取り結果を表示する
+ *
+ * @param {String} id
+ * @param {String} data
+ * @return {void}
+ */
+function setQRResult(id, data){
+  $(id).innerHTML = escapeHTML(data);
+}
+
+/**
+ * jQuery style wrapper
+ *
+ * @param {string} selector
+ * @return {Object}
+ */
+ function $(selector){
+  return( document.querySelector(selector) );
+}
+
+/**
+ * HTML表示用に文字列をエスケープする
+ *
+ * @param {string} str
+ * @return {string}
+ */
+function escapeHTML(str){
+  let result = "";
+  result = str.replace("&", "&amp;");
+  result = str.replace("'", "&#x27;");
+  result = str.replace("`", "&#x60;");
+  result = str.replace('"', "&quot;");
+  result = str.replace("<", "&lt;");
+  result = str.replace(">", "&gt;");
+  result = str.replace(/\n/, "<br>");
+
+  return(result);
+}
+</script>
+</body>
+</html>
