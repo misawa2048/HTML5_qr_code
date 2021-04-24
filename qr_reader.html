@@ -2,16 +2,17 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>[HTML5] QRCode Reader</title>
+  <title>[HTML5] QRCode Reader v1.1</title>
   <style>
     /* 全体のレイアウト調整 */
     #contents { display:flex; width:90%;}
-    #camera, #picture, #qrimage, #reset{ justify-content:center; margin:5px;}
+    #camera, #picture, #qrimage, #reset, #errsel{ justify-content:center; margin:5px;}
     #result { position:relative; top: -450px; left:30px; background:rgba(255,255,255,0.5); tra} 
     /* リーダー部分 */
     #picture { display:none; }
     #result { font-size: 14px; border: 1px solid gray; width:580px; height:90px; padding:0px;}
     #qrimage { border: 1px solid gray; width:200px; height:200px; padding:10px;}
+    #errsel, #reset{ font-size: 32px;}
     small { font-size: 14px; color:gray; }
   </style>
 </head>
@@ -39,7 +40,16 @@
     <canvas id="qrout" width="200" height="200"></canvas>
   </div>
   <button id="reset" onclick="onResetButton()">リセット</button>
+  エラー補正
+  <select id="errsel" onchange="onErrSelChg()">
+    <option value='L'>L(7%)</option>
+    <option value='M'>M(15%)</option>
+    <option value='Q'>Q(25%)</option>
+    <option value='H' selected>H(30%)</option>
+</select>
 
+  
+</select>
 <script src="node_modules/jsqr/dist/jsQR.js"></script>
 <script src="node_modules/qrcode/build/qrcode.js"></script>
 <script>
@@ -48,30 +58,26 @@ const canvas = $("#picture");    // === document.querySelector("#picture");
 const ctx = canvas.getContext("2d");
 const resetBtn = $("#reset");
 const qrcanvas = $("#qrout");    // === document.querySelector("#qrout");
+const errsel = $("#errsel");    // === document.querySelector("#errsel");
 const qrctx = qrcanvas.getContext("2d");
-
-window.onload = () => {
-/*test*/
-const tmpBinArr = [
+let errcorr='H'; //LMQH
+let qrBinData = new Uint8ClampedArray([
   122, 208, 103, 33, 200, 97, 38, 110, 53, 38, 198, 24, 199, 151, 150, 191,
   36, 167, 188, 119, 124, 234, 93, 35, 224, 119, 191, 57, 152, 95, 129, 140,
   29, 246,
-];
-let bindata = new Uint8ClampedArray(tmpBinArr);
-for(var i=0;i<tmpBinArr.length;++i){
-  console.log("["+i+"]="+bindata[i]);
-}
+]);
 
-/*
+window.onload = () => {
+/*test*/
 QRCode.toCanvas(
   document.getElementById('qrout'),
-  [{ data: bindata, mode: 'byte' } ],
-  { errorCorrectionLevel: 'Q' },
+  [{ data: qrBinData, mode: 'byte' } ],
+  { errorCorrectionLevel: errcorr },
   function (error) { if (error){console.error(error)} console.log('success!'); }
 )
-*/
 
 resetBtn.disabled = true;
+errsel.disabled = true;
 
   /** カメラ設定 */
   const constraints = {
@@ -87,10 +93,12 @@ resetBtn.disabled = true;
     video.srcObject = stream;
     video.onloadedmetadata = (e) => {
       video.play();
-      console.log("sync");
-
       // QRコードのチェック開始
-      checkPicture();
+      video.play();
+      // 0.3秒後にもう一度チェックする
+      setTimeout( () => {
+        checkPicture();
+      }, 300);
     };
   })
   .catch( (err) => {
@@ -115,7 +123,7 @@ function checkPicture(){
   //----------------------
   // 存在する場合
   //----------------------
-  if( code ){
+  if( code && code.binaryData.length>4 ){ // >4は誤爆を防ぐため
     // 結果を表示
     setQRResult("#result", binArrToHexStr(code.binaryData));  // 文字列
 
@@ -126,14 +134,10 @@ function checkPicture(){
     video.style.display = 'none';
     //video.pause();
     resetBtn.disabled = false;
+    errsel.disabled = false;
 
-    QRCode.toCanvas(
-  document.getElementById('qrout'),
-  [{ data: code.binaryData, mode: 'byte' } ],
-  { errorCorrectionLevel: 'H' },
-  function (error) { if (error){console.error(error)} console.log('success!'); }
-)
-
+    qrBinData = code.binaryData;
+    drawQr(qrBinData,errcorr);
   }
   //----------------------
   // 存在しない場合
@@ -145,6 +149,16 @@ function checkPicture(){
       checkPicture();
     }, 300);
   }
+}
+
+function drawQr(_qrBinData,_errcorr){
+  qrctx.clearRect(0,0,qrctx.canvas.width,qrctx.canvas.height);
+  QRCode.toCanvas(
+  document.getElementById('qrout'),
+  [{ data: _qrBinData, mode: 'byte' } ],
+  { errorCorrectionLevel: _errcorr }, // L/M/Q/H
+  function (error) { if (error){console.error(error)} console.log('success!'); }
+  )
 }
 
 function retry(){
@@ -160,6 +174,7 @@ function onResetButton(){
   $("#result").innerHTML = "";
   qrctx.clearRect(0,0,qrctx.canvas.width,qrctx.canvas.height);
   resetBtn.disabled=true;
+  errsel.disabled = true;
  
     canvas.style.display = 'none';
     video.style.display = 'block';
@@ -245,6 +260,11 @@ function escapeHTML(str){
   result = str.replace(/\n/, "<br>");
 
   return(result);
+}
+
+function onErrSelChg(){
+  errcorr = errsel.value;
+  drawQr(qrBinData,errcorr);
 }
 </script>
 </body>
