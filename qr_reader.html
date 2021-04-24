@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>[HTML5] QRCode Reader v1.1</title>
+  <title>[HTML5] QRCode Reader</title>
   <style>
     /* 全体のレイアウト調整 */
     #contents { display:flex; width:90%;}
@@ -18,7 +18,14 @@
 </head>
 <body>
 
-<h1>QRCode Reader</h1>
+<h1>QRCode Reader v1.1</h1>
+<pre>
+  [使い方]
+  １．画面にQRコードを近づける
+  ２．検出したら同じデータを持つQRコードが出力される
+  ３．エラー補正値を変更するとQRコードの形が変わる（データは同じ）
+  ４．リセットで再実行
+</pre>
 
 <section id="contents">
   <!-- カメラ映像 -->
@@ -69,12 +76,7 @@ let qrBinData = new Uint8ClampedArray([
 
 window.onload = () => {
 /*test*/
-QRCode.toCanvas(
-  document.getElementById('qrout'),
-  [{ data: qrBinData, mode: 'byte' } ],
-  { errorCorrectionLevel: errcorr },
-  function (error) { if (error){console.error(error)} console.log('success!'); }
-)
+//drawQr(qrBinData,errcorr);
 
 resetBtn.disabled = true;
 errsel.disabled = true;
@@ -125,7 +127,7 @@ function checkPicture(){
   //----------------------
   if( code && code.binaryData.length>4 ){ // >4は誤爆を防ぐため
     // 結果を表示
-    setQRResult("#result", binArrToHexStr(code.binaryData));  // 文字列
+    setQRResult("#result", binArrToHexStr(code.binaryData)+"<br/>"+binArrToAsciiStr(code.binaryData));  // 文字列
 
     drawLine(ctx, code.location);       // 見つかった箇所に線を引く
 
@@ -185,15 +187,22 @@ function binArrToHexStr(_binArr){
   var str ="";
   var cnt=0;
   for(var i=0;i<_binArr.length;++i){
-    var tmpd = ("000"+_binArr[i].toString(10)).slice(-3);
+    var tmpd = ("00"+_binArr[i].toString(16)).slice(-2);
     str += tmpd;
     cnt++;
     if(cnt>=16){
       cnt=0;
       str+="<br/>";
     }else{
-      str += " ";
+      str += ",";
     }
+  }
+  return str;
+}
+function binArrToAsciiStr(_binArr){
+  var str ="";
+  for(var i=0;i<_binArr.length;++i){
+    str += String.fromCharCode(_binArr[i]);
   }
   return str;
 }
